@@ -2,17 +2,23 @@
 class Uploader extends SimpleModule
 
   @count: 0
+  @token: ''
+  @downloadUrl: ''
 
   opts:
-    url: ''
+    url: 'http://upload.qiniu.com/'
+    token: ''
+    downloadUrl: ''
     params: null
-    fileKey: 'upload_file'
+    fileKey: 'file'
     connectionCount: 3
 
   _init: ->
     @files = [] #files being uploaded
     @queue = [] #files waiting to be uploaded
     @id = ++ Uploader.count
+    @token = this.opts.token
+    @downloadUrl = this.opts.downloadUrl
 
     # upload the files in the queue
     @on 'uploadcomplete', (e, file) =>
@@ -82,7 +88,10 @@ class Uploader extends SimpleModule
   _xhrUpload: (file) ->
     formData = new FormData()
     formData.append(file.fileKey, file.obj)
-    formData.append("original_filename", file.name)
+    # formData.append('key', key)
+    formData.append('token', @token)
+    formData.append("x:filename", file.name)
+    formData.append("x:size", file.size)
     formData.append(k, v) for k, v of file.params if file.params
 
     file.xhr = $.ajax
@@ -106,8 +115,14 @@ class Uploader extends SimpleModule
         @trigger 'uploaderror', [file, xhr, status]
       success: (result) =>
         @trigger 'uploadprogress', [file, file.size, file.size]
-        @trigger 'uploadsuccess', [file, result]
-        $(document).trigger 'uploadsuccess', [file, result, @]
+        $.ajax
+          url: @downloadUrl + '/' + result.key + '.json'
+          dataType: 'json'
+          type: 'GET'
+          success: (res) =>
+            rJson = {success: res.success, msg: @_t('uploadSuccess'), file_path: res.item.url}
+            @trigger 'uploadsuccess', [file, rJson]
+            $(document).trigger 'uploadsuccess', [file, rJson, @]
       complete: (xhr, status) =>
         @trigger 'uploadcomplete', [file, xhr.responseText]
 
@@ -150,6 +165,7 @@ class Uploader extends SimpleModule
   @i18n:
     'zh-CN':
       leaveConfirm: '正在上传文件，如果离开上传会自动取消'
+      uploadSuccess: '上传成功'
 
   @locale: 'zh-CN'
 
